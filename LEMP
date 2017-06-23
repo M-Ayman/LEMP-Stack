@@ -1,0 +1,154 @@
+make sure selinux & firewall are disabled
+
+On server1 "web server1"
+
+create a file named /etc/yum.repos.d/nginx.repo and paste the configurations below
+[nginx]
+name=nginx repo
+baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+gpgcheck=0
+enabled=1
+* Then install nginx using the following command :­
+yum install nginx -y
+service nginx start
+
+=============================================
+
+-Install PHP5.6 and PHP modules
+
+On server1 "web server1"
+
+(centos/rhel 7)
+wget http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el7.rf.x86_64.rpm
+rpm -Uvh rpmforge-release-0.5.3-1.el7.rf.x86_64.rpm
+ wget http://dag.wieers.com/rpm/packages/RPM-GPG-KEY.dag.txt
+ rpm --import RPM-GPG-KEY.dag.txt
+rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm 
+rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm 
+
+
+yum install php56w.x86_64 php56w-cli.x86_64 php56w-common.x86_64 php56w-gd.x86_64  php56w-mbstring.x86_64 php56w-mcrypt.x86_64 php56w-mysql.x86_64 php56w-pdo.x86_64 php56w-xml.x86_64 php56w-xmlrpc.x86_64 php56w-fpm.x86_64 php56w-pecl-apcu.x86_64  phpMyAdmin php56w-tidy.x86_64 php56w-devel.x86_64 php56w-pecl-memcache.x86_64 php56w-pecl-memcached.x86_64
+====================================================
+
+ - configure nginx to listen on php
+
+adduser ayman
+passwd ayman
+mkdir /home/ayman/ayman
+mkdir /home/ayman/logs
+touch /home/ayman/logs/{error.log,access.log}
+chown ­R ayman:ayman /home/ayman
+chmod 755 /home/ayman
+
+Create a new virtual host file for your site with the following configuration :­
+vim /etc/nginx/conf.d/ayman.conf
+server {
+    listen       80;
+    server_name  ayman.com;
+
+    # note that these lines are originally from the "location /" block
+    root   /home/ayman/ayman/public_html;
+    index index.php index.html index.htm;
+    error_log /home/ayman/logs/error.log;
+    access_log /home/ayman/logs/access.log;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /home/ayman/ayman/public_html;
+    }
+
+    location ~ \.php$ {
+        root /home/ayman/ayman/public_html;
+        fastcgi_pass 127.0.0.1:9001;;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+======================================================
+vim /etc/php­fpm.d/ayman.conf
+[ayman]
+listen = 127.0.0.1:9001
+;listen = /dev/shm/yns.socket
+listen.allowed_clients = 127.0.0.1
+user = ayman
+group = ayman
+pm = dynamic
+pm.max_children = 40pm.start_servers = 15
+pm.min_spare_servers = 10
+pm.max_spare_servers = 20
+pm.max_requests = 550
+
+php_admin_value[error_log] = /var/log/php­-fpm/www­/error.log
+php_admin_flag[log_errors] = on
+;php_admin_value[memory_limit] = 128M
+php_value[session.save_handler] = files
+php_value[session.save_path] = /var/lib/php/session
+===================================================
+# to check nginx confg use #nginx -t 
+#systemctl restart nginx php-fpm systemctl enable nginx php-fpm
+=================================================
+Now in order to mount the remote directory from the storage server we install the nfs
+client and update the fstab file to mount the remote directory when the system starts
+Install nfs client by run the following command:
+# yum install nfs­-utils nfs­-utils-­lib
+
+Update fstab file and add the following line:­/etc/fstab
+ip_of_nfs_server:/home/ayman /home/ayman/ayman nfs rw,rsize=4096,wsize=4096,hard,intr,async, 0 0
+==================================================================
+	-on the database server "second server"
+	-Install myql5.7
+
+(centos/rhel 7)
+vim /etc/yum.repos.d/MariaDB.repo
+  [mariadb]
+  name = MariaDB
+  baseurl = http://yum.mariadb.org/10.1/centos7-amd64
+  gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+  gpgcheck=1
+#yum install mariadb mariadb-server 
+#systemctl start mariadb.service   
+#mysql_secure_installation   %install databse with password, remove anon( press 4yes)
+
+#mysql -­u root -h localhost ­-p’PASSWD’
+create database ayman;
+CREATE USER ayman@ip-private_of-server1 IDENTIFIED BY PASSWORD 'PASSWD';
+GRANT ALL ON ayman.* TO 'ayman'@'ip-private_of-server1';
+flush privileges;
+exit;
+
+-if u have existing database"like ayman.sql"
+mysql ­u root ­p'qazwsx' ­­database ayman < ayman.sql
+----------------------------------------------------------
+	Install and Configure the NFS server
+adduser ayman
+passwd ayman
+mkdir /home/ayman/public_html
+Extract the application files in /home/ayman/public_html   %like wordpress files
+chown ­R ayman:ayman /home/ayman
+chmod 755 /home/ayman
+
+Update the exports file “ /etc/exports”  exported to remote hosts and specifies options
+/home/ayman/ ip_of_server1(rw,async,all_squash,anonuid=500,anongid=500)
+
+
+-install nfs server
+yum install nfs-utils
+systemctl enable rpcbind
+systemctl enable nfs-server
+systemctl enable nfs-lock
+systemctl enable nfs-idmap
+systemctl start rpcbind
+systemctl restart nfs-server
+systemctl start nfs-lock
+systemctl start nfs-idmap
+mount -a
+--------------------------------------------------------
+on the server 1 # mount -a
+
+
+
